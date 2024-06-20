@@ -8,10 +8,10 @@ import networkx as nx
 import multiprocessing as mp
 import torch.nn.functional as F
 from functools import partial
-import random
 from sklearn.metrics import roc_auc_score, f1_score
 from copy import deepcopy
 from scipy.spatial.distance import pdist,squareform
+import secrets
 
 def get_parser():
     parser = argparse.ArgumentParser()
@@ -66,7 +66,7 @@ def split_arti(labels, c_train_num):
     for i in range(num_classes):
         c_idx = (labels==i).nonzero()[:,-1].tolist()
         print('{:d}-th class sample number: {:d}'.format(i,len(c_idx)))
-        random.shuffle(c_idx)
+        secrets.SystemRandom().shuffle(c_idx)
         c_idxs.append(c_idx)
 
         train_idx = train_idx + c_idx[:c_train_num[i]]
@@ -75,7 +75,7 @@ def split_arti(labels, c_train_num):
         val_idx = val_idx + c_idx[c_train_num[i]:c_train_num[i]+25]
         test_idx = test_idx + c_idx[c_train_num[i]+25:c_train_num[i]+80]
 
-    random.shuffle(train_idx)
+    secrets.SystemRandom().shuffle(train_idx)
 
     #ipdb.set_trace()
 
@@ -101,7 +101,7 @@ def split_genuine(labels):
         c_idx = (labels==i).nonzero()[:,-1].tolist()
         c_num = len(c_idx)
         print('{:d}-th class sample number: {:d}'.format(i,len(c_idx)))
-        random.shuffle(c_idx)
+        secrets.SystemRandom().shuffle(c_idx)
         c_idxs.append(c_idx)
 
         if c_num <4:
@@ -122,7 +122,7 @@ def split_genuine(labels):
         val_idx = val_idx + c_idx[c_num_mat[i,0]:c_num_mat[i,0]+c_num_mat[i,1]]
         test_idx = test_idx + c_idx[c_num_mat[i,0]+c_num_mat[i,1]:c_num_mat[i,0]+c_num_mat[i,1]+c_num_mat[i,2]]
 
-    random.shuffle(train_idx)
+    secrets.SystemRandom().shuffle(train_idx)
 
     #ipdb.set_trace()
 
@@ -277,7 +277,7 @@ def src_smote(adj,features,labels,idx_train, portion=1.0, im_class_num=3):
 
             idx_neighbor = distance.argmin(axis=-1)
             
-            interp_place = random.random()
+            interp_place = secrets.SystemRandom().random()
             embed = chosen_embed + (chosen_embed[idx_neighbor,:]-chosen_embed)*interp_place
 
             if chosen is None:
@@ -296,7 +296,7 @@ def src_smote(adj,features,labels,idx_train, portion=1.0, im_class_num=3):
 
         idx_neighbor = distance.argmin(axis=-1)
             
-        interp_place = random.random()
+        interp_place = secrets.SystemRandom().random()
         embed = chosen_embed + (chosen_embed[idx_neighbor,:]-chosen_embed)*interp_place
 
         if chosen is None:
@@ -351,7 +351,7 @@ def recon_upsample(embed, labels, idx_train, adj=None, portion=1.0, im_class_num
 
             idx_neighbor = distance.argmin(axis=-1)
             
-            interp_place = random.random()
+            interp_place = secrets.SystemRandom().random()
             new_embed = embed[chosen,:] + (chosen_embed[idx_neighbor,:]-embed[chosen,:])*interp_place
 
 
