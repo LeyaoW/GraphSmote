@@ -17,9 +17,9 @@ def get_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument('--no-cuda', action='store_true', default=False,
                     help='Disables CUDA training.')
-    parser.add_argument('--seed', type=int, default=42)
+    parser.add_argument('--seed', type=int, default=1033)
     parser.add_argument('--nhid', type=int, default=64)
-    parser.add_argument('--dataset', type=str, default='cora')
+    #parser.add_argument('--dataset', type=str, default='cora')
     parser.add_argument('--size', type=int, default=100)
 
     parser.add_argument('--epochs', type=int, default=2010,
@@ -42,15 +42,16 @@ def get_parser():
     parser.add_argument('--opt_new_G', action='store_true', default=False) # whether optimize the decoded graph based on classification result.
     parser.add_argument('--load', type=str, default=None)
     parser.add_argument('--up_scale', type=float, default=1)
-    parser.add_argument('--im_ratio', type=float, default=0.5)
     parser.add_argument('--rec_weight', type=float, default=0.000001)
-    parser.add_argument('--model', type=str, default='sage', 
+    parser.add_argument('--model', type=str, default='gcn', 
         choices=['sage','gcn','GAT'])
 
-
+    parser.add_argument('--dataset',  default='cora_raw')
+    parser.add_argument('--imb_class', type=str, default="01234")
+    parser.add_argument('--imb_ratio', type=float, default=0.2)
 
     return parser
-
+'''
 def split_arti(labels, c_train_num):
     #labels: n-dim Longtensor, each element in [0,...,m-1].
     #cora: m=7
@@ -84,8 +85,39 @@ def split_arti(labels, c_train_num):
     test_idx = torch.LongTensor(test_idx)
     #c_num_mat = torch.LongTensor(c_num_mat)
 
-
     return train_idx, val_idx, test_idx, c_num_mat
+'''
+def split_arti(data,labels):
+    #labels: n-dim Longtensor, each element in [0,...,m-1].
+    #cora: m=7
+    num_classes = len(set(labels.tolist()))
+    print(num_classes)
+    c_idxs = [] # class-wise index
+    train_idx = data.train_idx
+    val_idx = data.val_idx
+    test_idx = data.test_idx
+    c_num_mat = np.zeros((num_classes,3)).astype(int)
+
+
+    for i in range(num_classes):
+        c_train_idx =torch.nonzero((data.y == i)&data.train_mask).view(-1)
+        c_val_idx =torch.nonzero((data.y == i)& data.val_mask).view(-1)
+        c_test_idx =torch.nonzero((data.y == i)&data.test_mask).view(-1)
+       
+        c_num_mat[i,0] = c_train_idx.shape[0]
+        c_num_mat[i,1] = c_val_idx.shape[0]
+        c_num_mat[i,2] = c_test_idx.shape[0]
+        
+
+    #ipdb.set_trace()
+
+    train_idx = torch.LongTensor(train_idx)
+    val_idx = torch.LongTensor(val_idx)
+    test_idx = torch.LongTensor(test_idx)
+    #c_num_mat = torch.LongTensor(c_num_mat)
+    print(c_num_mat)
+    return train_idx, val_idx, test_idx, c_num_mat
+
 
 def split_genuine(labels):
     #labels: n-dim Longtensor, each element in [0,...,m-1].
@@ -176,14 +208,14 @@ def print_class_acc(output, labels, class_num_list, pre='valid'):
 
     #ipdb.set_trace()
     if labels.max() > 1:
-        auc_score = roc_auc_score(labels.detach(), F.softmax(output, dim=-1).detach(), average='macro', multi_class='ovr')
+        auc_score = roc_auc_score(labels.cpu().detach(), F.softmax(output, dim=-1).cpu().detach(), average='macro', multi_class='ovr')
     else:
-        auc_score = roc_auc_score(labels.detach(), F.softmax(output, dim=-1)[:,1].detach(), average='macro')
+        auc_score = roc_auc_score(labels.cpu().detach(), F.softmax(output, dim=-1)[:,1].cpu().detach(), average='macro')
 
-    macro_F = f1_score(labels.detach(), torch.argmax(output, dim=-1).detach(), average='macro')
-    print(str(pre)+' current auc-roc score: {:f}, current macro_F score: {:f}'.format(auc_score,macro_F))
+    macro_F = f1_score(labels.cpu().detach(), torch.argmax(output, dim=-1).cpu().detach(), average='macro')
+    #print(str(pre)+' current auc-roc score: {:f}, current macro_F score: {:f}'.format(auc_score,macro_F))
 
-    return
+    return macro_F
 
 def src_upsample(adj,features,labels,idx_train, portion=1.0, im_class_num=3):
     c_largest = labels.max().item()
@@ -248,13 +280,13 @@ def src_upsample(adj,features,labels,idx_train, portion=1.0, im_class_num=3):
 
 
 def src_smote(adj,features,labels,idx_train, portion=1.0, im_class_num=3):
-    c_largest = labels.max().item()
+    c_largest = labels.max().item() # The largest class label
     adj_back = adj.to_dense()
     chosen = None
     new_features = None
 
     #ipdb.set_trace()
-    avg_number = int(idx_train.shape[0]/(c_largest+1))
+    avg_number = int(idx_train.shape[0]/(c_largest+1)) # average number of class
 
     for i in range(im_class_num):
         new_chosen = idx_train[(labels==(c_largest-i))[idx_train]]
@@ -262,23 +294,34 @@ def src_smote(adj,features,labels,idx_train, portion=1.0, im_class_num=3):
             c_portion = int(avg_number/new_chosen.shape[0])
 
             portion_rest = (avg_number/new_chosen.shape[0]) - c_portion
-
+            
         else:
             c_portion = int(portion)
             portion_rest = portion-c_portion
-            
+            #print(portion,c_portion) #1 1
         for j in range(c_portion):
             num = int(new_chosen.shape[0])
             new_chosen = new_chosen[:num]
-
             chosen_embed = features[new_chosen,:]
+            # print(chosen_embed.shape) # torch.Size([10, 1433])
             distance = squareform(pdist(chosen_embed.cpu().detach()))
             np.fill_diagonal(distance,distance.max()+100)
 
             idx_neighbor = distance.argmin(axis=-1)
-            
+            # print(idx_neighbor ) # [8 9 9 8 8 0 9 9 9 8]
             interp_place = random.random()
+            #print(chosen_embed[8]) # tensor([0.0000, 0.0000, 0.0455,  ..., 0.0000, 0.0000, 0.0000])
+            # print(chosen_embed[idx_neighbor].shape) #torch.Size([10, 1433])
+            
             embed = chosen_embed + (chosen_embed[idx_neighbor,:]-chosen_embed)*interp_place
+            #embed = chosen_embed + (chosen_embed[idx_neighbor]-chosen_embed)*interp_place
+            # print("chosen_embed[0]:", chosen_embed[0])
+            # print("chosen_embed[idx_neighbor][0]:", chosen_embed[idx_neighbor][0])
+            # print("interp_place:", interp_place)
+            # print("expected embed[0]:", chosen_embed[0] + (chosen_embed[idx_neighbor][0] - chosen_embed[0]) * interp_place)
+            # print("actual embed[0]:", embed[0])
+            # assert torch.allclose(embed[0], chosen_embed[0] + (chosen_embed[idx_neighbor][0] - chosen_embed[0]) * interp_place)
+
 
             if chosen is None:
                 chosen = new_chosen
@@ -286,19 +329,30 @@ def src_smote(adj,features,labels,idx_train, portion=1.0, im_class_num=3):
             else:
                 chosen = torch.cat((chosen, new_chosen), 0)
                 new_features = torch.cat((new_features, embed),0)
-            
+        
         num = int(new_chosen.shape[0]*portion_rest)
-        new_chosen = new_chosen[:num]
+        if num!=0:
+            #print(num) # 0
+            #print(new_chosen.shape[0],portion_rest) # 10 0
+            #print(new_chosen) # tensor([1230, 1408,  755, 2613,  744, 1143,  833, 2220,  100,  606])
+            new_chosen = new_chosen[:num] 
+            #print(new_chosen) #tensor([], dtype=torch.int64)
 
-        chosen_embed = features[new_chosen,:]
-        distance = squareform(pdist(chosen_embed.cpu().detach()))
-        np.fill_diagonal(distance,distance.max()+100)
+            chosen_embed = features[new_chosen,:]
+            # print(features.shape) # torch.Size([2708, 1433])
+            # print(new_chosen) #  tensor([], dtype=torch.int64)
+            # print(chosen_embed.shape) # torch.Size([0, 1433])
+            distance = squareform(pdist(chosen_embed.cpu().detach()))
+            np.fill_diagonal(distance,distance.max()+100)
 
-        idx_neighbor = distance.argmin(axis=-1)
+            idx_neighbor = distance.argmin(axis=-1)
+                
+            interp_place = random.random()
+            # print(chosen_embed.shape) # torch.Size([0, 1433])
+            # print(idx_neighbor) # [0]
             
-        interp_place = random.random()
-        embed = chosen_embed + (chosen_embed[idx_neighbor,:]-chosen_embed)*interp_place
-
+            embed = chosen_embed + (chosen_embed[idx_neighbor,:]-chosen_embed)*interp_place
+            
         if chosen is None:
             chosen = new_chosen
             new_features = embed
@@ -329,12 +383,12 @@ def src_smote(adj,features,labels,idx_train, portion=1.0, im_class_num=3):
 
 def recon_upsample(embed, labels, idx_train, adj=None, portion=1.0, im_class_num=3):
     c_largest = labels.max().item()
-    avg_number = int(idx_train.shape[0]/(c_largest+1))
+    avg_number = int(idx_train.shape[0]/(c_largest+1)) # number of training nodes / number of classes
     #ipdb.set_trace()
     adj_new = None
 
     for i in range(im_class_num):
-        chosen = idx_train[(labels==(c_largest-i))[idx_train]]
+        chosen = idx_train[(labels==(c_largest-i))[idx_train]]  # all training index of the 
         num = int(chosen.shape[0]*portion)
         if portion == 0:
             c_portion = int(avg_number/chosen.shape[0])

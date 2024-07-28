@@ -21,45 +21,61 @@ parser = utils.get_parser()
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
 
-'''
+    
+int_list=[]
+for char in args.imb_class:
+    int_list.append(int(char))
+args.imb_class=int_list
+# print(args.imb_class)
+# print(args.imb_ratio)
+
 random.seed(args.seed)
 np.random.seed(args.seed)
 torch.manual_seed(args.seed)
 if args.cuda:
     torch.cuda.manual_seed(args.seed)
-'''
+
 
 # Load data
-if args.dataset == 'cora':
-    adj, features, labels = data_load.load_data()
-    class_sample_num = 20
-    im_class_num = 3
-elif args.dataset == 'BlogCatalog':
-    adj, features, labels = data_load.load_data_Blog()
-    im_class_num = 14 #set it to be the number less than 100
-    class_sample_num = 20 #not used
-elif args.dataset == 'twitter':
-    adj, features, labels = data_load.load_sub_data_twitter()
-    im_class_num = 1
-    class_sample_num = 20 #not used
-else:
-    print("no this dataset: {args.dataset}")
+# if args.dataset == 'cora_raw':
+#     adj, features, labels,data = data_load.load_data(args)
+#     class_sample_num = 20
+#     im_class_num = 5
 
+# elif args.dataset == 'pubmed_raw':
+#     adj, features, labels,data = data_load.load_data(args,dataset="pubmed_raw")
+#     class_sample_num = 20
+#     im_class_num = 2
+    
+# elif args.dataset == 'BlogCatalog':
+#     adj, features, labels = data_load.load_data_Blog()
+#     im_class_num = 14 #set it to be the number less than 100
+#     class_sample_num = 20 #not used
+# elif args.dataset == 'twitter':
+#     adj, features, labels = data_load.load_sub_data_twitter()
+#     im_class_num = 1
+#     class_sample_num = 20 #not used
+# else:
+#     print("no this dataset: {args.dataset}")
+adj, features, labels,data = data_load.load_data(args, args.dataset )
+im_class_num=len(args.imb_class)
 
 #for artificial imbalanced setting: only the last im_class_num classes are imbalanced
-c_train_num = []
-for i in range(labels.max().item() + 1):
-    if args.imbalance and i > labels.max().item()-im_class_num: #only imbalance the last classes
-        c_train_num.append(int(class_sample_num*args.im_ratio))
+# c_train_num = []
+# for i in range(labels.max().item() + 1):
+#     #if args.imbalance and i > labels.max().item()-im_class_num: #only imbalance the last classes
+#     if args.imbalance and i < im_class_num:
+#         #print("imb:",i) # 0,1,2,3,4
+#         c_train_num.append(int(class_sample_num*args.im_ratio))
 
-    else:
-        c_train_num.append(class_sample_num)
+#     else:
+#         c_train_num.append(class_sample_num)
 
 #get train, validatio, test data split
 if args.dataset == 'BlogCatalog':
     idx_train, idx_val, idx_test, class_num_mat = utils.split_genuine(labels)
-elif args.dataset == 'cora':
-    idx_train, idx_val, idx_test, class_num_mat = utils.split_arti(labels, c_train_num)
+elif args.dataset == 'cora_raw' or "pubmed_raw" or "Arxiv" or "History" or "Photo":
+    idx_train, idx_val, idx_test, class_num_mat = utils.split_arti(data, labels)
 elif args.dataset == 'twitter':
     idx_train, idx_val, idx_test, class_num_mat = utils.split_genuine(labels)
 
@@ -193,14 +209,14 @@ def train(epoch):
         #calculate generation information
         exist_edge_prob = adj_new[:ori_num, :ori_num].mean() #edge prob for existing nodes
         generated_edge_prob = adj_new[ori_num:, :ori_num].mean() #edge prob for generated nodes
-        print("edge acc: {:.4f}, exist_edge_prob: {:.4f}, generated_edge_prob: {:.4f}".format(edge_ac.item(), exist_edge_prob.item(), generated_edge_prob.item()))
+        #print("edge acc: {:.4f}, exist_edge_prob: {:.4f}, generated_edge_prob: {:.4f}".format(edge_ac.item(), exist_edge_prob.item(), generated_edge_prob.item()))
 
 
         adj_new = torch.mul(adj_up, adj_new)
 
         exist_edge_prob = adj_new[:ori_num, :ori_num].mean() #edge prob for existing nodes
         generated_edge_prob = adj_new[ori_num:, :ori_num].mean() #edge prob for generated nodes
-        print("after filtering, edge acc: {:.4f}, exist_edge_prob: {:.4f}, generated_edge_prob: {:.4f}".format(edge_ac.item(), exist_edge_prob.item(), generated_edge_prob.item()))
+        #print("after filtering, edge acc: {:.4f}, exist_edge_prob: {:.4f}, generated_edge_prob: {:.4f}".format(edge_ac.item(), exist_edge_prob.item(), generated_edge_prob.item()))
 
 
         adj_new[:ori_num, :][:, :ori_num] = adj.detach().to_dense()
@@ -261,16 +277,16 @@ def train(epoch):
     #ipdb.set_trace()
     utils.print_class_acc(output[idx_val], labels[idx_val], class_num_mat[:,1])
 
-    print('Epoch: {:05d}'.format(epoch+1),
-          'loss_train: {:.4f}'.format(loss_train.item()),
-          'loss_rec: {:.4f}'.format(loss_rec.item()),
-          'acc_train: {:.4f}'.format(acc_train.item()),
-          'loss_val: {:.4f}'.format(loss_val.item()),
-          'acc_val: {:.4f}'.format(acc_val.item()),
-          'time: {:.4f}s'.format(time.time() - t))
+    # print('Epoch: {:05d}'.format(epoch+1),
+    #       'loss_train: {:.4f}'.format(loss_train.item()),
+    #       'loss_rec: {:.4f}'.format(loss_rec.item()),
+    #       'acc_train: {:.4f}'.format(acc_train.item()),
+    #       'loss_val: {:.4f}'.format(loss_val.item()),
+    #       'acc_val: {:.4f}'.format(acc_val.item()),
+    #       'time: {:.4f}s'.format(time.time() - t))
 
 
-def test(epoch = 0):
+def test(data,args,epoch = 0):
     encoder.eval()
     classifier.eval()
     decoder.eval()
@@ -281,13 +297,31 @@ def test(epoch = 0):
     print("Test set results:",
           "loss= {:.4f}".format(loss_test.item()),
           "accuracy= {:.4f}".format(acc_test.item()))
+    acc=acc_test
+    
+    maj_accuracy=[]
+    min_accuracy=[]
+    for i in range(args.num_classes):
+        idx_per_class= ((data.y == i) & data.test_mask).nonzero().view(-1)
+        acc_test_per_class = utils.accuracy(output[idx_per_class], labels[idx_per_class])
+        if i in args.imb_class:
+            min_accuracy.append(acc_test_per_class)
+        else:
+            maj_accuracy.append(acc_test_per_class)
+    ave_maj=sum(maj_accuracy)/len(maj_accuracy)
+    ave_min=sum(min_accuracy)/len(min_accuracy)
+    diff=(ave_maj-ave_min)
+    print("maj-min: ",diff)
+        
+        
 
-    utils.print_class_acc(output[idx_test], labels[idx_test], class_num_mat[:,2], pre='test')
+    f1=utils.print_class_acc(output[idx_test], labels[idx_test], class_num_mat[:,2], pre='test')
 
     '''
     if epoch==40:
         torch
     '''
+    return acc.item(), f1.item(), diff.item()
 
 
 def save_model(epoch):
@@ -297,7 +331,7 @@ def save_model(epoch):
     saved_content['decoder'] = decoder.state_dict()
     saved_content['classifier'] = classifier.state_dict()
 
-    torch.save(saved_content, 'checkpoint/{}/{}_{}_{}_{}.pth'.format(args.dataset,args.setting,epoch, args.opt_new_G, args.im_ratio))
+    torch.save(saved_content, 'checkpoint/{}/{}_{}_{}_{}.pth'.format(args.dataset,args.setting,epoch, args.opt_new_G, args.imb_ratio))
 
     return
 
@@ -312,23 +346,60 @@ def load_model(filename):
 
     return
 
-# Train model
-if args.load is not None:
-    load_model(args.load)
-
-t_total = time.time()
-for epoch in range(args.epochs):
-    train(epoch)
-
-    if epoch % 10 == 0:
-        test(epoch)
-
-    if epoch % 100 == 0:
-        save_model(epoch)
 
 
-print("Optimization Finished!")
-print("Total time elapsed: {:.4f}s".format(time.time() - t_total))
+accs=[]
+f1s=[]
+diffs=[]
 
-# Testing
-test()
+
+if args.setting=='recon':
+    runs=1
+else:
+    runs=5
+    
+for run in range(runs):
+    seed=args.seed+run
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if args.cuda:
+        torch.cuda.manual_seed(seed)
+        
+    # Train model
+    if args.load is not None:
+        load_model(args.load)
+
+    t_total = time.time()
+    for epoch in range(args.epochs):
+        train(epoch)
+
+        # if epoch % 10 == 0:
+        #     test(data,args,epoch)
+
+        if epoch % 100 == 0:
+            print("epoch: ",epoch)
+            test(data,args,epoch)
+            save_model(epoch)
+
+
+    print("Optimization Finished!")
+    print("Total time elapsed: {:.4f}s".format(time.time() - t_total))
+
+    # Testing
+    acc,f1,diff=test(data,args)
+    accs.append(acc)
+    f1s.append(f1)
+    diffs.append(diff)
+
+
+
+import numpy as np
+import statistics 
+# accs=np.array(accs)
+# f1s=np.array(f1s)
+# diffs=np.array(diffs)
+# print(accs,accs[0],type(accs))
+# print(f1s,f1s[0],type(f1s))
+print(accs,f1s,diffs)
+print(f"Ave Acc: {sum(accs)/len(accs)} +- {statistics.pstdev(accs)}, Ave f1: {sum(f1s)/len(f1s)} +- {statistics.pstdev(f1s)}, Maj-Min: {sum(diffs)/len(diffs)}")

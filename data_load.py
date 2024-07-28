@@ -6,6 +6,7 @@ import ipdb
 from scipy.io import loadmat
 import utils
 from collections import defaultdict
+from dataset import *
 
 IMBALANCE_THRESH = 101
 
@@ -13,16 +14,78 @@ def get_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument('--no-cuda', action='store_true', default=False,
                     help='Disables CUDA training.')
-    parser.add_argument('--seed', type=int, default=42)
+    parser.add_argument('--seed', type=int, default=1033)
     parser.add_argument('--target', type=int, default=4)    
     parser.add_argument('--k', type = int, default = 5)
+    
+    parser.add_argument('--dataset', choices=['cora_raw', 'pubmed_raw'], default='cora_raw')
+    parser.add_argument('--imb_class', type=str, default="01234")
+    parser.add_argument('--imb_ratio', type=float, default=0.2)
+    
     if hasattr(Trainer, 'add_args'):
         Trainer.add_args(parser)
     
-
     return parser
 
-def load_data(path="data/cora/", dataset="cora"):#modified from code: pygcn
+def load_data(args, dataset="cora_raw"):#modified from code: pygcn
+    """Load citation network dataset (cora only for now)"""
+    #input: idx_features_labels, adj
+    #idx,labels are not required to be processed in advance
+    #adj: save in the form of edges. idx1 idx2 
+    #output: adj, features, labels are all torch.tensor, in the dense form
+    #-------------------------------------------------------
+
+    print('Loading {} dataset...'.format(dataset))
+
+    # idx_features_labels = np.genfromtxt("{}{}.content".format(path, dataset),
+    #                                     dtype=np.dtype(str))
+    # features = sp.csr_matrix(idx_features_labels[:, 1:-1], dtype=np.float32)
+    # labels = idx_features_labels[:, -1]
+    # set_labels = set(labels)
+    # #print(set_labels) # {'Case_Based', 'Genetic_Algorithms', 'Reinforcement_Learning', 'Probabilistic_Methods', 'Neural_Networks', 'Rule_Learning', 'Theory'}
+    # classes_dict = {c: np.arange(len(set_labels))[i] for i, c in enumerate(set_labels)}
+    # #print(classes_dict) #{'Theory': 0, 'Reinforcement_Learning': 1, 'Probabilistic_Methods': 2, 'Case_Based': 3, 'Neural_Networks': 4, 'Rule_Learning': 5, 'Genetic_Algorithms': 6}
+    # #classes_dict = {'Neural_Networks': 0, 'Reinforcement_Learning': 1, 'Probabilistic_Methods': 2, 'Case_Based': 3, 'Theory': 4, 'Rule_Learning': 5, 'Genetic_Algorithms': 6}
+    # classes_dict ={'Rule_Learning': 0, 'Neural_Networks':1, 'Case_Based':2, 'Genetic_Algorithms':3, 'Theory':4, 'Reinforcement_Learning':5, 'Probabilistic_Methods':6}
+    # #ipdb.set_trace()
+    # labels = np.array(list(map(classes_dict.get, labels)))
+    
+    data, split_edge, args = get_dataset(args.dataset, args)
+    features = data.x
+    labels= data.y
+
+    # build graph
+    
+    # idx = np.array(idx_features_labels[:, 0], dtype=np.int32)
+    # idx_map = {j: i for i, j in enumerate(idx)}
+    # edges_unordered = np.genfromtxt("{}{}.cites".format(path, dataset),
+    #                                 dtype=np.int32)
+    # edges = np.array(list(map(idx_map.get, edges_unordered.flatten())),
+    #                  dtype=np.int32).reshape(edges_unordered.shape)
+    
+    edges = data.edge_index.t()
+    adj = sp.coo_matrix((np.ones(edges.shape[0]), (edges[:, 0], edges[:, 1])),
+                        shape=(labels.shape[0], labels.shape[0]),
+                        dtype=np.float32)
+
+    # build symmetric adjacency matrix
+    adj = adj + adj.T.multiply(adj.T > adj) - adj.multiply(adj.T > adj)
+
+    features=sp.csr_matrix(features)
+    features = normalize(features)
+    features = torch.FloatTensor(np.array(features.todense()))
+    labels = torch.LongTensor(labels)
+
+    utils.print_edges_num(adj.todense(), labels)
+
+    adj = sparse_mx_to_torch_sparse_tensor(adj)
+    #adj = torch.FloatTensor(np.array(adj.todense()))
+
+    return adj, features, labels,data
+
+
+
+def load_data_pubmed(path="data/pubmed/", dataset="pubmed"):#modified from code: pygcn
     """Load citation network dataset (cora only for now)"""
     #input: idx_features_labels, adj
     #idx,labels are not required to be processed in advance
@@ -38,8 +101,8 @@ def load_data(path="data/cora/", dataset="cora"):#modified from code: pygcn
     labels = idx_features_labels[:, -1]
     set_labels = set(labels)
     classes_dict = {c: np.arange(len(set_labels))[i] for i, c in enumerate(set_labels)}
-    classes_dict = {'Neural_Networks': 0, 'Reinforcement_Learning': 1, 'Probabilistic_Methods': 2, 'Case_Based': 3, 'Theory': 4, 'Rule_Learning': 5, 'Genetic_Algorithms': 6}
-
+    print(classes_dict) 
+    #classes_dict = {'Neural_Networks': 0, 'Reinforcement_Learning': 1, 'Probabilistic_Methods': 2, 'Case_Based': 3, 'Theory': 4, 'Rule_Learning': 5, 'Genetic_Algorithms': 6}
     #ipdb.set_trace()
     labels = np.array(list(map(classes_dict.get, labels)))
 
@@ -67,8 +130,7 @@ def load_data(path="data/cora/", dataset="cora"):#modified from code: pygcn
     adj = sparse_mx_to_torch_sparse_tensor(adj)
     #adj = torch.FloatTensor(np.array(adj.todense()))
 
-    return adj, features, labels
-
+    return adj, features, labels,data
 
 def Extract_graph(edgelist, fake_node, node_num):
     
