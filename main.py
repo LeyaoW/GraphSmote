@@ -9,9 +9,9 @@ import torch.optim as optim
 import models
 import utils
 import data_load
-import random
 import ipdb
 import copy
+import secrets
 
 #from torch.utils.tensorboard import SummaryWriter
 
@@ -29,7 +29,7 @@ args.imb_class=int_list
 # print(args.imb_class)
 # print(args.imb_ratio)
 
-random.seed(args.seed)
+secrets.SystemRandom().seed(args.seed)
 np.random.seed(args.seed)
 torch.manual_seed(args.seed)
 if args.cuda:
@@ -360,7 +360,7 @@ else:
     
 for run in range(runs):
     seed=args.seed+run
-    random.seed(seed)
+    secrets.SystemRandom().seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
     if args.cuda:

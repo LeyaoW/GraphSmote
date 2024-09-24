@@ -8,10 +8,10 @@ import networkx as nx
 import multiprocessing as mp
 import torch.nn.functional as F
 from functools import partial
-import random
 from sklearn.metrics import roc_auc_score, f1_score
 from copy import deepcopy
 from scipy.spatial.distance import pdist,squareform
+import secrets
 
 def get_parser():
     parser = argparse.ArgumentParser()
@@ -133,7 +133,7 @@ def split_genuine(labels):
         c_idx = (labels==i).nonzero()[:,-1].tolist()
         c_num = len(c_idx)
         print('{:d}-th class sample number: {:d}'.format(i,len(c_idx)))
-        random.shuffle(c_idx)
+        secrets.SystemRandom().shuffle(c_idx)
         c_idxs.append(c_idx)
 
         if c_num <4:
@@ -154,7 +154,7 @@ def split_genuine(labels):
         val_idx = val_idx + c_idx[c_num_mat[i,0]:c_num_mat[i,0]+c_num_mat[i,1]]
         test_idx = test_idx + c_idx[c_num_mat[i,0]+c_num_mat[i,1]:c_num_mat[i,0]+c_num_mat[i,1]+c_num_mat[i,2]]
 
-    random.shuffle(train_idx)
+    secrets.SystemRandom().shuffle(train_idx)
 
     #ipdb.set_trace()
 
@@ -309,7 +309,7 @@ def src_smote(adj,features,labels,idx_train, portion=1.0, im_class_num=3):
 
             idx_neighbor = distance.argmin(axis=-1)
             # print(idx_neighbor ) # [8 9 9 8 8 0 9 9 9 8]
-            interp_place = random.random()
+            interp_place = secrets.SystemRandom().random()
             #print(chosen_embed[8]) # tensor([0.0000, 0.0000, 0.0455,  ..., 0.0000, 0.0000, 0.0000])
             # print(chosen_embed[idx_neighbor].shape) #torch.Size([10, 1433])
             
@@ -347,7 +347,7 @@ def src_smote(adj,features,labels,idx_train, portion=1.0, im_class_num=3):
 
             idx_neighbor = distance.argmin(axis=-1)
                 
-            interp_place = random.random()
+            interp_place = secrets.SystemRandom().random()
             # print(chosen_embed.shape) # torch.Size([0, 1433])
             # print(idx_neighbor) # [0]
             
@@ -405,7 +405,7 @@ def recon_upsample(embed, labels, idx_train, adj=None, portion=1.0, im_class_num
 
             idx_neighbor = distance.argmin(axis=-1)
             
-            interp_place = random.random()
+            interp_place = secrets.SystemRandom().random()
             new_embed = embed[chosen,:] + (chosen_embed[idx_neighbor,:]-embed[chosen,:])*interp_place
 
 
